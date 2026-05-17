@@ -122,10 +122,15 @@ ${brandList}
     const clean = text.replace(/^["'「」『』`\s]+|["'「」『』`\s]+$/g, '').trim();
     if (!clean) return null;
 
-    // 파이프 구분 파싱
-    const parts = clean.split('|').map(s =>
-      s.replace(/^["'「」『』`\s]+|["'「」『』`\s]+$/g, '').trim()
-    ).filter(Boolean);
+    // 파이프 구분 파싱 + 부연 설명 제거
+    const parts = clean.split('|').map(s => {
+      return s
+        .split('\n')[0]                                          // 첫 줄만
+        .replace(/\s*[\(\[（【][^)\]）】]*[\)\]）】]/g, '')      // (괄호 설명) 제거
+        .replace(/\s*[-–—].*$/,  '')                            // - 이후 설명 제거
+        .replace(/^["'「」『』`\s]+|["'「」『』`\s]+$/g, '')    // 따옴표 제거
+        .trim();
+    }).filter(Boolean);
 
     // 첫 항목이 원본과 동일하고 추가 항목 없으면 의미 없음
     if (parts.length === 1 && parts[0].toLowerCase() === keyword.toLowerCase()) return null;
