@@ -308,7 +308,29 @@ body {
   border-radius: 99px;
   transition: width .2s ease;
 }
-.progress-text { font-size: 12px; color: var(--muted); text-align: right; }
+.progress-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.progress-text { font-size: 12px; color: var(--muted); }
+
+.btn-stop {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--danger);
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background .15s;
+}
+.btn-stop:hover { background: #DC2626; }
+.btn-stop:disabled { opacity: .4; cursor: not-allowed; }
 
 /* ── 다운로드 섹션 ────────────────────────────────────────────────── */
 .download-section {

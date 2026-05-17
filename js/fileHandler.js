@@ -86,11 +86,18 @@ function downloadCsv(workbook, filename = '검색어분석결과.csv') {
   URL.revokeObjectURL(url);
 }
 
-// ── 일괄 분석 (진행률 콜백) ───────────────────────────────────────────
-async function processRows(rows, options, onProgress) {
+// ── 일괄 분석 (진행률 콜백, 중단 콜백, 시작 인덱스) ─────────────────
+async function processRows(rows, options, onProgress, isCancelled, startFrom = 0) {
   const results = [];
+  let stopped = false;
 
-  for (let i = 0; i < rows.length; i++) {
+  for (let i = startFrom; i < rows.length; i++) {
+    // 중단 요청 확인
+    if (isCancelled && isCancelled()) {
+      stopped = true;
+      break;
+    }
+
     const { rowIndex, keyword } = rows[i];
     let output = '';
 
@@ -104,13 +111,14 @@ async function processRows(rows, options, onProgress) {
     }
 
     results.push({ rowIndex, keyword, output });
-    if (onProgress) onProgress(i + 1, rows.length);
+    // 진행률은 이번 루프에서 처리한 개수만 넘김 (app.js에서 alreadyDone 더함)
+    if (onProgress) onProgress(results.length, rows.length);
 
-    // OpenAI API rate-limit 방지
+    // OpenAI API rate-limit 방지 (중단 요청이 없을 때만 대기)
     if (options.enableOpenAI && options.openAiKey && i < rows.length - 1) {
       await new Promise(r => setTimeout(r, 300));
     }
   }
 
-  return results;
+  return { results, stopped };
 }

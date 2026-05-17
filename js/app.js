@@ -115,14 +115,18 @@ async function runDirectAnalysis() {
 }
 
 // ── 파일 처리 ─────────────────────────────────────────────────────────
-let parsedFileData = null, resultWorkbook = null, originalFileName = '';
+let parsedFileData  = null, resultWorkbook = null, originalFileName = '';
+let stopRequested   = false;
+let partialResults  = null;   // 중단 시 완료된 결과 보관, null = 미시작/완료
 
 function resetFileState() {
-  parsedFileData = null; resultWorkbook = null;
+  parsedFileData = null; resultWorkbook = null; partialResults = null;
   ['fileInfo','progressSection','downloadSection'].forEach(
     id => (document.getElementById(id).hidden = true)
   );
-  document.getElementById('processFileBtn').disabled = true;
+  const processBtn = document.getElementById('processFileBtn');
+  processBtn.disabled    = true;
+  processBtn.textContent = '파일 분석 시작';
   document.getElementById('dropZone').classList.remove('has-file');
 }
 
@@ -134,10 +138,13 @@ async function handleFileSelect(file) {
   try {
     parsedFileData   = await parseFile(file);
     originalFileName = file.name.replace(/\.[^.]+$/, '');
+    partialResults   = null;   // 새 파일이므로 이전 중단 이력 초기화
     document.getElementById('fileName').textContent =
       `${file.name}  (데이터 ${parsedFileData.rows.length}행)`;
     document.getElementById('fileInfo').hidden         = false;
-    document.getElementById('processFileBtn').disabled = false;
+    const processBtn = document.getElementById('processFileBtn');
+    processBtn.disabled    = false;
+    processBtn.textContent = '파일 분석 시작';
     document.getElementById('downloadSection').hidden  = true;
     document.getElementById('progressSection').hidden  = true;
     document.getElementById('dropZone').classList.add('has-file');
@@ -147,33 +154,80 @@ async function handleFileSelect(file) {
 
 async function runFileAnalysis() {
   if (!parsedFileData) return;
+
+  const isResume  = partialResults !== null;
+  const startFrom = isResume ? partialResults.length : 0;
+  stopRequested   = false;
+
   const processBtn = document.getElementById('processFileBtn');
+  const stopBtn    = document.getElementById('stopFileBtn');
   processBtn.disabled = true;
+  stopBtn.disabled    = false;
 
   const total    = parsedFileData.rows.length;
   const progSec  = document.getElementById('progressSection');
   const progFill = document.getElementById('progressFill');
   const progText = document.getElementById('progressText');
   progSec.hidden = false;
-  progFill.style.width = '0%';
-  progText.textContent = `0 / ${total}`;
+  document.getElementById('downloadSection').hidden = true;
+
+  // 재개 시 이미 완료된 진행률부터 표시
+  const alreadyDone = startFrom;
+  progFill.style.width = Math.round(alreadyDone / total * 100) + '%';
+  progText.textContent = `${alreadyDone} / ${total}`;
 
   try {
-    const results = await processRows(
+    const { results: newResults, stopped } = await processRows(
       parsedFileData.rows, getAnalysisOptions(),
       (done, tot) => {
-        progFill.style.width = Math.round(done / tot * 100) + '%';
-        progText.textContent = `${done} / ${tot}`;
-      }
+        const totalDone = alreadyDone + done;
+        progFill.style.width = Math.round(totalDone / tot * 100) + '%';
+        progText.textContent = `${totalDone} / ${tot}`;
+      },
+      () => stopRequested,
+      startFrom
     );
-    resultWorkbook = buildResultWorkbook(parsedFileData, results);
-    const suggested = results.filter(r => r.output).length;
-    document.getElementById('downloadStat').textContent = `총 ${total}행 · 제안 ${suggested}개`;
+
+    // 이전 결과 + 이번 결과 합산
+    const allResults = isResume ? [...partialResults, ...newResults] : newResults;
+
+    if (!allResults.length) {
+      showToast('분석된 결과가 없습니다.', 'warning');
+      return;
+    }
+
+    resultWorkbook = buildResultWorkbook(parsedFileData, allResults);
+    const suggested = allResults.filter(r => r.output).length;
+    const doneCount = allResults.length;
+
+    if (stopped) {
+      partialResults = allResults;   // 중단 → 재개를 위해 보관
+      processBtn.textContent = '이어서 분석';
+      document.getElementById('downloadTitle').textContent =
+        `⏹ 중단됨 — ${doneCount}행까지 완료. 결과 파일을 다운로드하세요.`;
+      document.getElementById('downloadStat').textContent =
+        `처리 ${doneCount} / ${total}행 · 제안 ${suggested}개`;
+      showToast(`중단됨 — ${doneCount}행 완료. "이어서 분석"으로 재개할 수 있습니다.`, 'warning', 4000);
+    } else {
+      partialResults = null;   // 완료 → 초기화
+      processBtn.textContent = '파일 분석 시작';
+      document.getElementById('downloadTitle').textContent =
+        isResume ? '재개 후 분석 완료! 결과 파일을 다운로드하세요.'
+                 : '분석 완료! 결과 파일을 다운로드하세요.';
+      document.getElementById('downloadStat').textContent =
+        `총 ${total}행 · 제안 ${suggested}개`;
+      showToast('분석 완료! 파일을 다운로드하세요.', 'success');
+    }
     document.getElementById('downloadSection').hidden = false;
-    showToast('분석 완료! 파일을 다운로드하세요.', 'success');
   } catch (e) {
     showToast('파일 분석 오류: ' + e.message, 'error');
-  } finally { processBtn.disabled = false; }
+  } finally {
+    processBtn.disabled = false;
+    stopBtn.disabled    = true;
+    stopRequested       = false;
+    stopBtn.innerHTML   =
+      `<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="2"/></svg> 중단`;
+  }
 }
 
 // ── 브랜드 관리 ───────────────────────────────────────────────────────
@@ -268,6 +322,11 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('fileInput').value = ''; resetFileState();
   });
   document.getElementById('processFileBtn').addEventListener('click', runFileAnalysis);
+  document.getElementById('stopFileBtn').addEventListener('click', () => {
+    stopRequested = true;
+    document.getElementById('stopFileBtn').disabled = true;
+    document.getElementById('stopFileBtn').textContent = '중단 중…';
+  });
 
   document.getElementById('downloadXlsx').addEventListener('click', () => {
     if (resultWorkbook) downloadXlsx(resultWorkbook, `${originalFileName}_분석결과.xlsx`);

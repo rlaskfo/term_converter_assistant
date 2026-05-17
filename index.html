@@ -95,12 +95,20 @@
         <div class="progress-bar">
           <div class="progress-fill" id="progressFill" style="width:0%"></div>
         </div>
-        <div class="progress-text" id="progressText">0 / 0</div>
+        <div class="progress-footer">
+          <span class="progress-text" id="progressText">0 / 0</span>
+          <button class="btn btn-stop" id="stopFileBtn" type="button">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+              <rect x="4" y="4" width="16" height="16" rx="2"/>
+            </svg>
+            중단
+          </button>
+        </div>
       </div>
 
       <!-- 다운로드 -->
       <div class="download-section" id="downloadSection" hidden>
-        <p class="download-title">분석 완료! 결과 파일을 다운로드하세요.</p>
+        <p class="download-title" id="downloadTitle">분석 완료! 결과 파일을 다운로드하세요.</p>
         <div class="download-buttons">
           <button class="btn btn-success" id="downloadXlsx" type="button">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
